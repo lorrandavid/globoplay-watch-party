@@ -1,0 +1,22 @@
+{
+    "manifest_version": 3,
+    "name": "Globoplay Spoiler Free",
+    "description": "Bloqueia as visualizações de thumbnail e pre-load de imagens antes de vídeos no Globoplay para evitar spoilers",
+    "version": "0.1.0",
+    "background": {
+      "service_worker": "background.js"
+    },
+    "content_scripts": [{
+      "css": ["styles.css"],
+      "js": ["js/jquery.min.js", "js/socket.io.min.js", "contentScript.js"],
+      "matches": ["*://globoplay.globo.com/*"]
+    }],
+    "permissions": [
+      "tabs",
+      "storage"
+    ],
+    "action": {
+      "default_title": "Globoplay Watch Party",
+      "default_popup": "popup/popup.html"
+    }
+}

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Globoplay Watch Party</title>
+  <link rel="stylesheet" href="normalize.min.css">
+  <link rel="stylesheet" href="popup.css">
+  <script type="text/javascript" src="./../js/jquery.min.js"></script>
+  <script type="text/javascript" src="popup.js"></script>
+</head>
+<body>
+  <div class="content">
+    <div class="view notAvailable hidden">
+      <p>Acesse <a href="https://globoplay.globo.com/">https://globoplay.globo.com/</a> para utilizar a extensão!</p>
+    </div>
+
+    <div class="view createParty">
+      <p>Pegue sua pipoca e inicie uma Watch Party!</p>
+      <button id="createSession">Iniciar</button>
+    </div>
+
+    <div class="view inParty hidden">
+      <p>Você está conectado à uma Watch Party. Compartilhe a url abaixo com seus amigos!</p>
+      <div class="inParty__inner">
+        <input id="shareURL" type="text" readonly="true" autocomplete="off" autofocus />
+        <button id="leaveSession">Desconectar</button>
+      </div>
+    </div>
+
+    <div class="view error hidden">
+      <p>Erro :(</p>
+      <p>Atualize a página e tente novamente.</p>
+    </div>
+  </div>
+</body>
+</html>
