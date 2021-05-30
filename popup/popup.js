@@ -50,7 +50,6 @@ $(function () {
 
     // When user clicks Leave Session button
     $("#leaveSession").on("click", function() {
-      alert(JSON.stringify(userData));
       chrome.tabs.sendMessage(id, { type: "leaveSession", roomId: userData.roomId }, function () {
         chrome.storage.local.remove(["gpwUser"], function () {
           showView(".createParty");

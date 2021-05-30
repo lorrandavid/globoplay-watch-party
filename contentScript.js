@@ -1,116 +1,48 @@
-// 'use strict';
+var RequestTypes = {
+  CREATE_SESSION: "createSession",
+  LEAVE_SESSION: "leaveSession"
+};
+var VIDEO_URL_VALIDATOR = '/v/';
+var BBB_URL_VALIDATOR = '/big-brother-brasil/';
 
-// const VIDEO_URL_VALIDATOR = '/v/';
-// const BBB_URL_VALIDATOR = '/big-brother-brasil/';
+// var socket = io("https://globoplay-watch-party.herokuapp.com");
+var socket = io("http://localhost:3000");
+var hasLoaded = false; // Check if extension has loaded
+var hasSetupVideo = false; // Check if video event has already been setup
+var isCommandReceived = false; // Prevent emission to Socket io
+var eventQueue = [];
 
-// let checkForVideo;
-// let currentUrl;
+var video; // Video element
+var roomId; // Socket io room
+var currentUrl; // Current page
+var mediaControl; // Media control element
+var canStart; // Interval to check if page is ready
 
-// /** Check if current page contains video player */
-// function isUrlVideo(url) {
-//   return url.includes(VIDEO_URL_VALIDATOR);
-// }
+// Receives command or chat when socket io is used
+socket.on("receivedCommand", triggerCommand);
+socket.on("receivedChat", renderMessageReceived);
 
-// /** Check if current page contains thumbnail list */
-// function isUrlBBB(url) {
-//   return url.includes(BBB_URL_VALIDATOR);
-// }
+// Receives message when popup is used
+chrome.runtime.onMessage.addListener(function (request, _, sendResponse) {
+  currentUrl = window.location.href;
 
-// /** Show entire app div */
-// function showScreen() {
-//   document.querySelector('#app').setAttribute('style', 'opacity: 1 !important');
-// }
+  if (request.type === RequestTypes.CREATE_SESSION) {
+    handleCreateSession(request.url, sendResponse);
+  }
 
-// /** Hide entire app div to prevent spoilers before intervals */
-// function hideScreen() {
-//   document.querySelector('#app').removeAttribute('style');
-// }
+  if (request.type === RequestTypes.LEAVE_SESSION) {
+    handleLeaveSession(request.roomId, sendResponse);
+  }
 
-// /** Check for thumbnails in the current page */
-// function handleThumbnails() {
-//   const thumbnailWidget = Array.from(document.querySelectorAll('.thumbnail-widget'));
-//   const playkitWidget = Array.from(document.querySelectorAll('.playkit-thumb-v2__image-wrapper'));
-//   const widget =  thumbnailWidget.concat(playkitWidget);
+  if (request.message === 'URL_CHANGED') {
+    hideScreen();
+    app();
+  }
 
-//   if (widget && widget.length > 0) {
-//     Array.from(widget).forEach(function (thumbnail) {
-//       handleThumbnailWidget(thumbnail);
-//     });
+  return true;
+});
 
-//     showScreen();
-//     clearInterval(checkForVideo);
-//   }
-// }
-
-// /** Hide every single thumbnail and title to prevent spoilers */
-// function handleThumbnailWidget(thumbnail) {
-//   const children = Array.from(thumbnail.children).filter(function (child) {
-//     return child.nodeName === 'IMG';
-//   });
-
-//   children.forEach(function (child) {
-//     child.remove();
-//   });
-
-//   thumbnail.style.background = '#000';
-//   thumbnail.parentNode.querySelector('.video-widget__textbox').remove();
-// }
-
-// /** Handle video to stop and hide poster spoiler */
-// function handleVideo() {
-//   var video = document.querySelector('video');
-//   var canStart = false;
-
-//   if (video) {
-//     video.setAttribute('poster', '');
-//     video.pause();
-
-//     video.addEventListener('canplay', function() {
-//       if (!canStart) {
-//         canStart = true;
-
-//         setTimeout(function() {
-//           video.pause();
-//           showScreen();
-//         }, 500);
-//       }
-//     });
-
-//     video.addEventListener('ended', function() {
-//       hideScreen();
-//     });
-
-//     clearInterval(checkForVideo);
-//   }
-// }
-
-// /** Execute both functions whenever URL_CHANGES to see what's the current page */
-// function app() {
-//   checkForVideo = setInterval(function() {
-//     if (isUrlVideo(currentUrl)) {
-//       return handleVideo();
-//     }
-
-//     if (isUrlBBB(currentUrl)) {
-//       return handleThumbnails();
-//     }
-//   }, 1000);
-// }
-
-// /** Add listener to chrome events */
-// chrome.runtime.onMessage.addListener(function (request) {
-//   currentUrl = window.location.href;
-
-//   if (request.message === 'URL_CHANGED') {
-//     if (checkForVideo) {
-//       clearInterval(checkForVideo);
-//     }
-
-//     hideScreen();
-//     app();
-//   }
-// });
-
+// Generate a random id (used for rooms)
 function generateUUID() {
   let array = new Uint32Array(8);
   window.crypto.getRandomValues(array);
@@ -123,203 +55,282 @@ function generateUUID() {
   return str;
 }
 
-(function () {
-  var RequestTypes = {
-    CREATE_SESSION: "createSession",
-    LEAVE_SESSION: "leaveSession"
-  };
-  var hasLoaded = false;
-  var isCommandReceived = false;
-  var eventQueue = [];
-  var mediaControl;
-  var video;
-  var socket = io("https://globoplay-watch-party.herokuapp.com");
-  var roomId;
+// Creates a new session
+function handleCreateSession(url, sendResponse) {
+  video.get(0).pause();
 
-  socket.on("receivedCommand", triggerCommand);
-  socket.on("receivedChat", renderMessageReceived);
-
-  // Receives message when popup is used
-  chrome.runtime.onMessage.addListener(function (request, _, sendResponse) {
-    if (request.type === RequestTypes.CREATE_SESSION) {
-      handleCreateSession(request.url, sendResponse);
+  socket.emit("createSession", { url, roomId: generateUUID(), time: video.get(0).currentTime }, function (response) {
+      window.history.replaceState(null, null, "?r=" + response.roomId);
+      handleState(response.state);
+      sendResponse(response);
     }
+  );
 
-    if (request.type === RequestTypes.LEAVE_SESSION) {
-      handleLeaveSession(request.roomId, sendResponse);
+  return true;
+}
+
+// Leave current session
+function handleLeaveSession(roomId, sendResponse) {
+  socket.emit("leaveSession", { roomId }, function () {
+      var urlParams = new URLSearchParams(window.location.search);
+      sendResponse(true);
+      window.location.href = window.location.href.replace(urlParams, '');
     }
+  );
 
-    return true;
+  return true;
+}
+
+// Choose which command to execute
+function triggerCommand(command) {
+  if (!hasLoaded) {
+    return eventQueue.push(command);
+  }
+
+  isCommandReceived = true;
+
+  switch (command.type) {
+    case "play":
+      video.get(0).play();
+      break;
+    case "pause":
+      video.get(0).pause();
+      break;
+    default:
+      return;
+  }
+
+  isCommandReceived = true;
+  video.get(0).currentTime = command.time;
+}
+
+// Attach events
+function attachEvents() {
+  video.on("play", function (e) {
+    if (isCommandReceived || !roomId) {
+      isCommandReceived = false;
+      return;
+    };
+
+    emmitPlayerCommand("play", e.target.currentTime);
   });
 
-  function handleCreateSession(url, sendResponse) {
-    socket.emit("createSession", { url, roomId: generateUUID() }, function (response) {
-        sendResponse(response);
-      }
-    );
+  video.on("pause", function (e) {
+    if (isCommandReceived || !roomId) {
+      isCommandReceived = false;
+      return;
+    };
 
-    return true;
+    emmitPlayerCommand("pause", e.target.currentTime);
+  });
+}
+
+// Send command to socket io
+function emmitPlayerCommand(type, time) {
+  socket.emit("sendCommand", { type, time, roomId });
+  isCommandReceived = false;
+}
+
+// Start application
+function run() {
+  checkSession();
+  runEventQueue();
+}
+
+// Check if user should be placed in a room according to url
+function checkSession() {
+  var urlParams = new URLSearchParams(window.location.search);
+  roomId = urlParams.get("r");
+
+  // If user is joining from a specific party URL
+  if (roomId) {
+    return joinParty(roomId);
   }
 
-  function handleLeaveSession(roomId, sendResponse) {
-    socket.emit("leaveSession", { roomId }, function () {
-        var urlParams = new URLSearchParams(window.location.search);
-        sendResponse(true);
-        window.location.href = window.location.href.replace(urlParams, '');
-      }
-    );
+  // If user already has an active session started
+  checkStorage();
+}
 
-    return true;
+// Check if user should be placed in a room according to his storage
+function checkStorage() {
+  chrome.storage.local.get(["gpwUser"], function (response) {
+    if (response.gpwUser && response.gpwUser.created && response.gpwUser.roomId) {
+      roomId = response.gpwUser.roomId;
+      window.history.replaceState(null, null, "?r=" + roomId);
+      joinParty(roomId);
+    }
+  });
+}
+
+// Join an existing party
+function joinParty(roomId) {
+  isCommandReceived = true;
+  video.get(0).pause();
+
+  socket.emit("joinSession", { url: window.location.href.replace(window.location.search, ''), roomId }, function(response) {
+    if (response.joined) {
+      handleState(response.state);
+      renderParty();
+    }
+  });
+}
+
+// Handle changes based on rooms current state
+function handleState(state) {
+  var time = state.currentTime;
+  var status = state.playerStatus;
+  isCommandReceived = true;
+
+  if (status === "play") {
+    video.get(0).play();
+  } else {
+    video.get(0).pause();
   }
 
-  /** Command switch */
-  function triggerCommand(command) {
-    if (!hasLoaded) {
-      return eventQueue.push(command);
+  isCommandReceived = true;
+  video.get(0).currentTime = time;
+}
+
+// Render divs for watch party
+function renderParty() {
+  $('body').addClass('inParty');
+  $('.inParty').prepend('<div class="gpw-wrapper"></div>');
+  $('.player-fullscreen').appendTo('.gpw-wrapper');
+  $('<div class="gpw-wrapper__chat"><div class="gpw-wrapper__chat__content"></div><div class="gpw-wrapper__chat__input"><input /></div></div>').appendTo('.gpw-wrapper');
+  $('#app').remove();
+
+  addPartyEvents();
+}
+
+// Render divs for messages sent
+function renderMessageSent(data) {
+  $('.gpw-wrapper__chat__content').append('<div class="gpw-wrapper__chat__msg" data-senderName="'+ data.senderName +'"><div class="gpw-wrapper__chat__response"><span>'+ data.senderName +'</span><p>'+ data.message +'</p></div></div>');
+}
+
+// Render divs for messages received
+function renderMessageReceived(data) {
+  $('.gpw-wrapper__chat__content').append('<div class="gpw-wrapper__chat__msg" data-senderName="'+ data.senderName +'"><div><span>'+ data.senderName +'</span><p>'+ data.message +'</p></div></div>');
+}
+
+// Add events to Watch Party Elements
+function addPartyEvents() {
+  $('.gpw-wrapper__chat__input input').on('keypress', function(e) {
+    if (e.which === 13 && e.target.value) {
+      $(this).attr("disabled", "disabled");
+
+      var payload = {
+        roomId: roomId,
+        senderName: 'Temp',
+        message: $(this).val()
+      };
+
+      socket.emit("sendChat", payload, function(response) {
+        renderMessageSent(response);
+      });
+
+      $(this).removeAttr("disabled");
+      $(this).val('');
+      $(this).focus();
+    }
+  });
+}
+
+// Run event queue when receives commands while not ready
+function runEventQueue() {
+  eventQueue.forEach(function(event) {
+    triggerCommand(event);
+  });
+
+  eventQueue = [];
+}
+
+// /** Check if current page contains video player
+function isUrlVideo(url) {
+  return url.includes(VIDEO_URL_VALIDATOR);
+}
+
+// Check if current page contains thumbnail list
+function isUrlBBB(url) {
+  return url.includes(BBB_URL_VALIDATOR);
+}
+
+// Show entire app div
+function showScreen() {
+  $('#app').addClass('showScreen');
+}
+
+// Hide entire app div to prevent spoilers before intervals
+function hideScreen() {
+  $('#app').removeClass('showScreen');
+}
+
+// Check for thumbnails in the current page
+function handleThumbnails() {
+  const widget = $('.thumbnail-widget, .playkit-thumb-v2__image-wrapper');
+
+  if (widget && widget.length > 0) {
+    widget.each(function() {
+      handleThumbnailWidget(this);
+    });
+
+    clearInterval(canStart);
+    showScreen();
+  }
+}
+
+// Hide every single thumbnail and title to prevent spoilers
+function handleThumbnailWidget(thumbnail) {
+  var children = $(thumbnail).children('img');
+
+  children.each(function () {
+    this.remove();
+  });
+
+  $(thumbnail).css('background', '#000000');
+  $(thumbnail).siblings('.video-widget__textbox').remove();
+}
+
+// Setup initial video
+function handleVideo() {
+  video = $('video[id]');
+  mediaControl = $(".media-control-panel");
+
+  if (video && video.length && mediaControl && mediaControl.length) {
+    video.attr('poster', '');
+    video.get(0).pause();
+
+    if (video.get(0).readyState >= video.get(0).HAVE_ENOUGH_DATA && !hasSetupVideo) {
+      setTimeout(function() {
+        hasSetupVideo = true;
+        video.get(0).pause();
+        attachEvents();
+        showScreen();
+        run();
+      }, 500);
+
+      video.on('ended', function() {
+        hideScreen();
+      });
     }
 
-    switch (command.type) {
-      case "play":
-      case "seeked":
-        video[0].play();
-        break;
-      case "pause":
-        video[0].pause();
-        break;
-      default:
-        return;
-    }
-
-    video[0].currentTime = command.time;
-    isCommandReceived = true;
+    clearInterval(canStart);
   }
+}
 
-  /** Start application */
-  function run() {
-    checkSession();
-    attachEvents();
-    runEventQueue();
-  }
-
-  function checkSession() {
-    var urlParams = new URLSearchParams(window.location.search);
-    roomId = urlParams.get("r");
-
-    // If user is joining from a specific party URL
-    if (roomId) {
-      return joinParty(roomId);
-    }
-
-    // If user already has an active session started
-    checkStorage();
-  }
-
-  function checkStorage() {
-    chrome.storage.local.get(["gpwUser"], function (response) {
-      if (response.gpwUser && response.gpwUser.created && response.gpwUser.roomId) {
-        roomId = response.gpwUser.roomId;
-        window.history.replaceState(null, null, "?r=" + roomId);
-        joinParty(roomId);
-      }
-    });
-  }
-
-  function joinParty(roomId) {
-    socket.emit("joinSession", { url: window.location.href.replace(window.location.search, ''), roomId }, function(response) {
-      if (response.joined) {
-        renderParty();
-      }
-    });
-  }
-
-  function renderParty() {
-    $('body').addClass('inParty');
-    $('.inParty').prepend('<div class="gpw-wrapper"></div>');
-    $('.player-fullscreen').appendTo('.gpw-wrapper');
-    $('<div class="gpw-wrapper__chat"><div class="gpw-wrapper__chat__content"></div><div class="gpw-wrapper__chat__input"><input /></div></div>').appendTo('.gpw-wrapper');
-    $('#app').remove();
-
-    addPartyEvents();
-  }
-
-  function addPartyEvents() {
-    $('.gpw-wrapper__chat__input input').on('keypress', function(e) {
-      if (e.which === 13 && e.target.value) {
-        $(this).attr("disabled", "disabled");
-
-        var payload = {
-          roomId: roomId,
-          senderName: 'Temp',
-          message: $(this).val()
-        };
-
-        socket.emit("sendChat", payload, function(response) {
-          renderMessageSent(response);
-        });
-
-        $(this).removeAttr("disabled");
-        $(this).val('');
-        $(this).focus();
-      }
-    });
-  }
-
-  function renderMessageSent(data) {
-    $('.gpw-wrapper__chat__content').append('<div class="gpw-wrapper__chat__msg" data-senderName="'+ data.senderName +'"><div class="gpw-wrapper__chat__response"><span>'+ data.senderName +'</span><p>'+ data.message +'</p></div></div>');
-  }
-
-  function renderMessageReceived(data) {
-    $('.gpw-wrapper__chat__content').append('<div class="gpw-wrapper__chat__msg" data-senderName="'+ data.senderName +'"><div><span>'+ data.senderName +'</span><p>'+ data.message +'</p></div></div>');
-  }
-
-  /** Attach events to controls */
-  function attachEvents() {
-    // video.on("play", function (e) {
-    //   if (isCommandReceived) return;
-    //   emmitPlayerCommand("play");
-    // });
-
-    // video.on("pause", function (e) {
-    //   if (isCommandReceived) return;
-    //   emmitPlayerCommand("pause");
-    // });
-
-    // video.on("seeked", function (e) {
-    //   if (isCommandReceived) return;
-    //   emmitPlayerCommand("seeked");
-    // });
-  }
-
-  /** Emit a command to socket */
-  function emmitPlayerCommand(type) {
-    socket.emit("sendCommand", { type, time: e.target.currentTime });
-    isCommandReceived = false;
-  }
-
-  /** Run event queue when receives commands while not ready */
-  function runEventQueue() {
-    eventQueue.forEach(function(event) {
-      triggerCommand(event);
-    });
-
-    eventQueue = [];
-  }
-
-  /** Check if DOM exists */
-  function hasDOM() {
-    video = $("video[src]");
-    mediaControl = $(".media-control-panel");
-
-    return video && video.length && mediaControl && mediaControl.length;
-  }
-
-  var canStart = setInterval(function () {
-    if (!hasDOM()) {
+function app() {
+  canStart = setInterval(function () {
+    if (!isUrlVideo(currentUrl) && !isUrlBBB(currentUrl)) {
       return;
     }
 
     hasLoaded = true;
-    clearInterval(canStart);
-    run();
+
+    if (isUrlVideo(currentUrl)) {
+      return handleVideo();
+    }
+
+    if (isUrlBBB(currentUrl)) {
+      return handleThumbnails();
+    }
   }, 500);
-})();
+}

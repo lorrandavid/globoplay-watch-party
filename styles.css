@@ -1,6 +1,10 @@
-/* #app {
+#app {
   opacity: 0 !important;
-} */
+}
+
+#app.showScreen {
+  opacity: 1 !important;
+}
 
 .inParty {
   overflow: hidden;
@@ -8,6 +12,11 @@
 
 .inParty .player-fullscreen {
   position: relative;
+}
+
+.inParty .next-video-screen,
+.inParty .poster__background {
+  opacity: 0 !important;
 }
 
 .gpw-wrapper {
