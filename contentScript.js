@@ -205,11 +205,13 @@ function renderParty() {
 // Render divs for messages sent
 function renderMessageSent(data) {
   $('.gpw-wrapper__chat__content').append('<div class="gpw-wrapper__chat__msg" data-senderName="'+ data.senderName +'"><div class="gpw-wrapper__chat__response"><span>'+ data.senderName +'</span><p>'+ data.message +'</p></div></div>');
+  $(".gpw-wrapper__chat__content").scrollTop($(".gpw-wrapper__chat__content").get(0).scrollHeight);
 }
 
 // Render divs for messages received
 function renderMessageReceived(data) {
   $('.gpw-wrapper__chat__content').append('<div class="gpw-wrapper__chat__msg" data-senderName="'+ data.senderName +'"><div><span>'+ data.senderName +'</span><p>'+ data.message +'</p></div></div>');
+  $(".gpw-wrapper__chat__content").scrollTop($(".gpw-wrapper__chat__content").get(0).scrollHeight);
 }
 
 // Add events to Watch Party Elements

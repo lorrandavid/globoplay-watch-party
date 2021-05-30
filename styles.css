@@ -34,6 +34,7 @@
 .gpw-wrapper__chat__content {
   flex: 1;
   padding: 24px;
+  overflow-y: auto;
 }
 
 .gpw-wrapper__chat__input {
