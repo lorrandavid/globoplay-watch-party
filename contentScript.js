@@ -5,8 +5,8 @@ var RequestTypes = {
 var VIDEO_URL_VALIDATOR = '/v/';
 var BBB_URL_VALIDATOR = '/big-brother-brasil/';
 
-// var socket = io("https://globoplay-watch-party.herokuapp.com");
-var socket = io("http://localhost:3000");
+var socket = io("https://globoplay-watch-party.herokuapp.com");
+// var socket = io("http://localhost:3000");
 var hasLoaded = false; // Check if extension has loaded
 var hasSetupVideo = false; // Check if video event has already been setup
 var isCommandReceived = false; // Prevent emission to Socket io
